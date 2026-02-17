@@ -23,15 +23,20 @@ pipeline {
      */
 
     agent {
-        /*
-         * Uses the Docker Cloud Agent we configured in Jenkins.
-         * Label 'docker-agent' refers to the template in:
-         * Manage Jenkins → Clouds → docker → docker-agent template
-         *
-         * This spins up a fresh container for each build
-         * and destroys it after the build completes.
-         */
-        label 'docker-agent'
+        docker {
+            /*
+             * We use 'docker:latest' image because:
+             * - It has Docker CLI built in ✅
+             * - Lightweight Alpine-based image ✅
+             * - Perfect for building Docker images ✅
+             *
+             * args: Mount Docker socket from host so
+             * the container can talk to Docker engine
+             * on the host machine (your docker-compose setup)
+             */
+            image 'docker:latest'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
     }
 
     options {
