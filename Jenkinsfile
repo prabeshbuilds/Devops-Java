@@ -102,7 +102,7 @@ pipeline {
                 sh """
                     echo "=== Security Scan ==="
 
-                    CONTAINER_UID=\$(docker run --rm ${CI_IMAGE} id -u)
+                    CONTAINER_UID=\$(docker run --rm --entrypoint id ${CI_IMAGE} -u)
                     echo "Container UID: \${CONTAINER_UID}"
 
                     if [ "\${CONTAINER_UID}" = "0" ]; then
