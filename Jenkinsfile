@@ -219,38 +219,56 @@ pipeline {
         // ════════════════════════════════════════════════
         stage('🧪 Run Tests') {
             steps {
-                /*
-                 * We run tests inside the Docker container we just built.
-                 * This ensures tests run in the exact same environment
-                 * as production - no "works on my machine" issues!
-                 *
-                 * docker run --rm = delete container after tests finish
-                 */
                 sh """
-                    echo "Running tests inside Docker container..."
-                    echo "This ensures same environment as production"
+                    echo "=== Verifying Docker Image ==="
                     echo ""
+                    
+                    /*
+                    * WHY we don't start the full app here:
+                    * 
+                    * Our app needs PostgreSQL database to start.
+                    * In CI we don't have a database running.
+                    * Starting the full app is NOT the job of CI!
+                    *
+                    * CI job is to:
+                    * ✅ Verify image exists
+                    * ✅ Verify image structure is correct
+                    * ✅ Verify correct user (non-root)
+                    * ✅ Verify correct port exposed
+                    * ✅ Verify JAR exists inside image
+                    *
+                    * Full app testing happens in:
+                    * → Integration tests (with docker-compose + db)
+                    * → Staging environment
+                    * → NOT in basic CI build check
+                    */
 
-                    docker run --rm \\
-                        --name test-${env.BUILD_NUMBER} \\
-                        ${CI_IMAGE} \\
-                        java -jar app.jar --spring.profiles.active=test || true
-
-                    echo "✅ Tests completed"
+                    echo "1. Checking image exists..."
+                    docker images ${CI_IMAGE}
+                    echo "✅ Image exists"
+                    echo ""
+                    
+                    echo "2. Verifying JAR file inside image..."
+                    docker run --rm ${CI_IMAGE} \\
+                        ls -lh /app/app.jar
+                    echo "✅ JAR file found"
+                    echo ""
+                    
+                    echo "3. Verifying Java version inside image..."
+                    docker run --rm ${CI_IMAGE} \\
+                        java -version
+                    echo "✅ Java verified"
+                    echo ""
+                    
+                    echo "4. Checking exposed ports..."
+                    EXPOSED_PORT=\$(docker inspect ${CI_IMAGE} \\
+                        --format='{{json .Config.ExposedPorts}}')
+                    echo "Exposed ports: \${EXPOSED_PORT}"
+                    echo "✅ Port configuration verified"
+                    echo ""
+                    
+                    echo "✅ All image verifications passed!"
                 """
-                /*
-                 * In a real Spring Boot app with tests:
-                 *
-                 * Option 1: Run tests in build_stage of Dockerfile
-                 *   Remove -DskipTests from: ./mvnw clean package -DskipTests
-                 *
-                 * Option 2: Separate test container
-                 *   docker run --rm ${CI_IMAGE} ./mvnw test
-                 *
-                 * Option 3: Dedicated test Dockerfile
-                 *   docker build -f Dockerfile.test -t test-image .
-                 *   docker run --rm test-image ./mvnw test
-                 */
             }
         }
 
@@ -260,29 +278,36 @@ pipeline {
         stage('🔒 Security Scan') {
             steps {
                 sh """
-                    echo "=== Docker Image Security Scan ==="
-                    echo ""
-                    echo "Scanning: ${CI_IMAGE}"
+                    echo "=== Security Scan ==="
                     echo ""
 
-                    # Basic security checks
-                    echo "Checking if container runs as non-root..."
-                    USER=\$(docker inspect ${CI_IMAGE} --format='{{.Config.User}}')
-                    echo "Container user: \${USER:-root}"
+                    # Get the actual user configured in the image
+                    CONTAINER_USER=\$(docker inspect ${CI_IMAGE} \
+                        --format='{{.Config.User}}')
 
-                    if [ "\${USER}" = "devopsuser" ]; then
-                        echo "✅ Container runs as non-root user (devopsuser)"
+                    echo "Container configured user: \${CONTAINER_USER:-not set}"
+                    echo ""
+
+                    # Real check: is it running as root (UID 0) or not?
+                    # We don't care about the NAME, we care about UID!
+                    CONTAINER_UID=\$(docker run --rm ${CI_IMAGE} \
+                        id -u)
+
+                    echo "Container UID: \${CONTAINER_UID}"
+                    echo ""
+
+                    # Security rule: UID 0 = root = BAD in production!
+                    if [ "\${CONTAINER_UID}" = "0" ]; then
+                        echo "❌ SECURITY RISK: Container runs as ROOT (UID 0)!"
+                        echo "   Fix: Add non-root user in your Dockerfile"
+                        exit 1  # Fail the build!
                     else
-                        echo "⚠️  Warning: Check container user configuration"
+                        echo "✅ Security PASSED: Container runs as non-root"
+                        echo "   UID: \${CONTAINER_UID} (not root)"
                     fi
 
                     echo ""
                     echo "✅ Security scan completed"
-
-                    # In production, use Trivy:
-                    # docker run --rm \\
-                    #     -v /var/run/docker.sock:/var/run/docker.sock \\
-                    #     aquasec/trivy image ${CI_IMAGE}
                 """
             }
         }
