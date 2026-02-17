@@ -80,11 +80,11 @@ pipeline {
                     echo "=== Image Verification ==="
 
                     echo "1. Checking JAR exists inside image..."
-                    docker run --rm ${CI_IMAGE} ls -lh /app/app.jar
+                    docker run --rm --entrypoint ls ${CI_IMAGE} -lh /app/app.jar
                     echo "✅ JAR found"
 
                     echo "2. Checking Java inside image..."
-                    docker run --rm ${CI_IMAGE} java -version
+                    docker run --rm --entrypoint java ${CI_IMAGE} -version
                     echo "✅ Java OK"
 
                     echo "3. Checking exposed port..."
