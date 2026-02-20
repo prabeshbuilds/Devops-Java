@@ -25,15 +25,15 @@ pipeline {
             steps {
                 script {
                     echo """
-╔══════════════════════════════════════════════════════╗
-║               CI PIPELINE STARTED                    ║
-╚══════════════════════════════════════════════════════╝
-   Build  : #${env.BUILD_NUMBER}
-   Branch : ${env.BRANCH_NAME}
-   PR     : ${env.CHANGE_ID ?: 'Not a PR'}
-   Title  : ${env.CHANGE_TITLE ?: 'N/A'}
-══════════════════════════════════════════════════════
-                    """
+                                ╔══════════════════════════════════════════════════════╗
+                                ║               CI PIPELINE STARTED                    ║
+                                ╚══════════════════════════════════════════════════════╝
+                                Build  : #${env.BUILD_NUMBER}
+                                Branch : ${env.BRANCH_NAME}
+                                PR     : ${env.CHANGE_ID ?: 'Not a PR'}
+                                Title  : ${env.CHANGE_TITLE ?: 'N/A'}
+                                ══════════════════════════════════════════════════════
+                                                    """
                 }
             }
         }
