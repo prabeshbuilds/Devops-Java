@@ -126,10 +126,10 @@ pipeline {
     }
 
     post {
-        success {
-            script {
-                if (env.CHANGE_ID) {
-                    echo """
+    success {
+        script {
+            if (env.CHANGE_ID) {
+                echo """
 ╔══════════════════════════════════════════════════════╗
 ║            ✅ CI PASSED - PR VALIDATED               ║
 ╚══════════════════════════════════════════════════════╝
@@ -143,9 +143,9 @@ pipeline {
 
    → Get code review → Merge to main for deployment
 ══════════════════════════════════════════════════════
-                    """
-                } else {
-                    echo """
+                """
+            } else {
+                echo """
 ╔══════════════════════════════════════════════════════╗
 ║          ✅ CI PASSED - BRANCH VALIDATED             ║
 ╚══════════════════════════════════════════════════════╝
@@ -157,13 +157,13 @@ pipeline {
    ✅ Image Verify  : Passed
    ✅ Security Scan : Passed
 ══════════════════════════════════════════════════════
-                    """
-                }
+                """
             }
         }
+    }
 
-        failure {
-            echo """
+    failure {
+        echo """
 ╔══════════════════════════════════════════════════════╗
 ║              ❌ CI PIPELINE FAILED                   ║
 ╚══════════════════════════════════════════════════════╝
@@ -172,11 +172,12 @@ pipeline {
    PR     : ${env.CHANGE_ID ?: 'N/A'}
    Logs   : ${env.BUILD_URL}
 ══════════════════════════════════════════════════════
-            """
-        }
+        """
+    }
 
-        always {
-            sh 'docker image prune -f || true'
+    always {
+        node {
+            sh 'docker system prune -f || true'
         }
     }
 }
