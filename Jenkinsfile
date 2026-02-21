@@ -161,7 +161,9 @@ Logs   : ${env.BUILD_URL}
         }
 
         always {
-            sh 'docker system prune -f || true'
+                    node {
+                sh 'docker system prune -f || true'
+            }
         }
     }
 }
