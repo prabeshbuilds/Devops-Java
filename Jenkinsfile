@@ -1,12 +1,14 @@
 pipeline {
 
     agent {
-        docker {
-            image 'docker:latest'?
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
+    docker {
+        image 'docker:cli'
+        args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+        // Note: Running as root inside the container is necessary to access the Docker socket and perform build operations. In production, consider using a non-root user with appropriate permissions for better security.
     }
+}
     // agent any
+    
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
