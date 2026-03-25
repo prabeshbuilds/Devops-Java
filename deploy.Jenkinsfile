@@ -36,124 +36,55 @@ Deploy: ${DEPLOY_SERVER}
 """
             }
         }
+stage('🚀 Deploy') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-credentials',
+            usernameVariable: 'DOCKER_USERNAME',
+            passwordVariable: 'DOCKER_PASSWORD'
+        )]) {
+            sshagent(['deployment-server-ssh']) {
+                sh '''
+                ssh -o StrictHostKeyChecking=no -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
+                    set -e
 
-        stage('🐳 Build Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                        IMAGE="$DOCKER_USERNAME/$APP_NAME"
+                    echo '🚀 Deploying application...'
 
-                        echo "Building $IMAGE:$IMAGE_TAG"
+                    # Ensure network
+                    sudo docker network create private-net || true
 
-                        docker build \
-                          -t $IMAGE:$IMAGE_TAG \
-                          -t $IMAGE:latest .
+                    # Login DockerHub
+                    echo '$DOCKER_PASSWORD' | sudo docker login -u '$DOCKER_USERNAME' --password-stdin
 
-                        docker images $IMAGE
-                    '''
-                }
+                    # Pull image
+                    sudo docker pull $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
+
+                    # Stop old container
+                    sudo docker stop $APP_NAME || true
+                    sudo docker rm $APP_NAME || true
+
+                    # Run container
+                    sudo docker run -d \
+                      --name $APP_NAME \
+                      --restart unless-stopped \
+                      --network private-net \
+                      --env-file $ENV_FILE \
+                      -p $APP_PORT:8080 \
+                      $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
+
+                    # Verify
+                    sleep 5
+                    sudo docker ps | grep $APP_NAME
+
+                    sudo docker logout
+
+                    echo '✅ Deployment done!'
+                "
+                '''
             }
         }
-
-        stage('🔒 Security Check') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                        IMAGE="$DOCKER_USERNAME/$APP_NAME"
-
-                        UID=$(docker run --rm --entrypoint id $IMAGE:$IMAGE_TAG -u)
-
-                        if [ "$UID" = "0" ]; then
-                          echo "❌ Running as ROOT"
-                          exit 1
-                        else
-                          echo "✅ Non-root container"
-                        fi
-                    '''
-                }
-            }
-        }
-
-        stage('📤 Push Image') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                        IMAGE="$DOCKER_USERNAME/$APP_NAME"
-
-                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-
-                        docker push $IMAGE:$IMAGE_TAG
-                        docker push $IMAGE:latest
-
-                        docker logout
-                    '''
-                }
-            }
-        }
-
-        stage('🚀 Deploy') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sshagent(['deployment-server-ssh']) {
-                        sh '''
-                        IMAGE="$DOCKER_USERNAME/$APP_NAME"
-
-                        ssh -o StrictHostKeyChecking=no -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
-                            set -e
-
-                            echo '🚀 Deploying application...'
-
-                            # Ensure docker network exists
-                            docker network create private-net || true
-
-                            # Login DockerHub
-                            echo '$DOCKER_PASSWORD' | docker login -u '$DOCKER_USERNAME' --password-stdin
-
-                            # Pull image
-                            docker pull $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
-
-                            # Stop old container
-                            docker stop $APP_NAME || true
-                            docker rm $APP_NAME || true
-
-                            # Run new container
-                            docker run -d \
-                              --name $APP_NAME \
-                              --restart unless-stopped \
-                              --network private-net \
-                              --env-file $ENV_FILE \
-                              -p $APP_PORT:8080 \
-                              $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
-
-                            # Verify
-                            sleep 5
-                            docker ps | grep $APP_NAME
-
-                            docker logout
-
-                            echo '✅ Deployment done!'
-                        "
-                        '''
-                    }
-                }
-            }
-        }
+    }
+}
 
         stage('🏥 Health Check') {
             steps {
