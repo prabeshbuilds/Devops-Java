@@ -136,14 +136,15 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-          stage('🏥 Health Check') {
+
+stage('🏥 Health Check') {
     steps {
         script {
             sh """
                 set -e
                 echo "=== Preparing Health Check Environment ==="
                 
-                # Ensure curl exists
+                # Only install curl if missing
                 if ! command -v curl &> /dev/null; then
                     if command -v apk &> /dev/null; then
                         echo "Installing curl via apk..."
@@ -180,6 +181,8 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
+
+
         stage('🧹 Cleanup Jenkins') {
             steps {
                 withCredentials([usernamePassword(
