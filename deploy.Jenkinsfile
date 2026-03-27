@@ -33,7 +33,7 @@ pipeline {
 ║           🚀 CD PIPELINE START               ║
 ╚══════════════════════════════════════════════╝
 Build   : #${env.BUILD_NUMBER}
-Branch  : ${env.BRANCH_NAME}
+Branch  : ${env.BRANCH_NAME ?: 'N/A'}
 Commit  : ${IMAGE_TAG}
 Server  : ${DEPLOY_SERVER}
 ══════════════════════════════════════════════
@@ -70,7 +70,7 @@ Server  : ${DEPLOY_SERVER}
                     echo "📤 Logging in to DockerHub..."
                     echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-                    echo "📤 Pushing Docker image..."
+                    echo "📤 Pushing Docker images..."
                     docker push $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
                     docker push $DOCKER_USERNAME/$APP_NAME:latest
                     '''
@@ -99,7 +99,6 @@ Server  : ${DEPLOY_SERVER}
                         # Stop & remove old container
                         docker stop $APP_NAME 2>/dev/null || true
                         docker rm   $APP_NAME 2>/dev/null || true
-                        
 
                         # Run new container
                         docker run -d \
@@ -110,17 +109,17 @@ Server  : ${DEPLOY_SERVER}
                             -p $APP_PORT:8080 \
                             $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
 
-                        # Verify container
+                        # Verify container is running
                         sleep 5
                         docker ps | grep $APP_NAME
 
-                        # Show logs
+                        # Show last 20 logs
                         docker logs --tail 20 $APP_NAME
 
                         # Cleanup old images (keep last 5)
                         docker images --format '{{.Repository}} {{.ID}} {{.CreatedAt}}' \
                             | grep $DOCKER_USERNAME/$APP_NAME \
-                            | sort -k3 -r \
+                            | sort -rk3 \
                             | tail -n +6 \
                             | awk '{print \$2}' \
                             | xargs -r docker rmi || true
@@ -138,7 +137,7 @@ Server  : ${DEPLOY_SERVER}
                     echo "🏥 Checking application health..."
 
                     for i in $(seq 1 10); do
-                        if ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "curl -f http://localhost:$APP_PORT"; then
+                        if ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "curl -s -o /dev/null -w '%{http_code}' http://localhost:$APP_PORT | grep 200"; then
                             echo "✅ Application is healthy!"
                             echo "🌐 Live: http://$DEPLOY_SERVER:$APP_PORT"
                             exit 0
