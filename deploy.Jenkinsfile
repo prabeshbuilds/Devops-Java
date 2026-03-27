@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -22,7 +21,7 @@ pipeline {
         DEPLOY_PORT   = '22'
         APP_PORT      = '8080'
 
-        // IMPORTANT: must exist on remote server
+        // Must exist on remote server
         ENV_FILE      = '/home/prabesh/.env'
     }
 
@@ -43,90 +42,104 @@ Server  : ${DEPLOY_SERVER}
             }
         }
 
-        stage('🚀 Deploy to Production') {
+        stage('🔨 Build Docker Image') {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-credentials',
                     usernameVariable: 'DOCKER_USERNAME',
                     passwordVariable: 'DOCKER_PASSWORD'
                 )]) {
-
-                    sshagent(['deployment-server-ssh']) {
-                        sh '''
-                        set -e
-
-                        echo "🚀 Starting Deployment..."
-
-                        ssh -o StrictHostKeyChecking=accept-new -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
-                            set -e
-
-                            echo 'Connected to server'
-
-                            # Ensure Docker network exists
-                            docker network inspect private-net >/dev/null 2>&1 || \
-                            docker network create private-net
-
-                            # Login to DockerHub
-                            echo \"$DOCKER_PASSWORD\" | docker login -u \"$DOCKER_USERNAME\" --password-stdin
-
-                            # Pull latest image
-                            docker pull $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
-
-                            # Stop & remove old container
-                            docker stop $APP_NAME 2>/dev/null || true
-                            docker rm   $APP_NAME 2>/dev/null || true
-
-                            # Run new container
-                            docker run -d \
-                                --name $APP_NAME \
-                                --restart unless-stopped \
-                                --network private-net \
-                                --env-file $ENV_FILE \
-                                -p $APP_PORT:8080 \
-                                $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
-
-                            # Verify container
-                            sleep 5
-                            docker ps | grep $APP_NAME
-
-                            # Show logs
-                            docker logs --tail 20 $APP_NAME
-
-                            # Cleanup old images (keep last 5)
-                            docker images | grep $DOCKER_USERNAME/$APP_NAME | \
-                            tail -n +6 | awk '{print \\$3}' | xargs -r docker rmi || true
-
-                            docker logout
-
-                            echo '✅ Deployment successful!'
-                        "
-                        '''
-                    }
+                    sh '''
+                    set -e
+                    echo "🔨 Building Docker image..."
+                    docker build -t $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG .
+                    docker tag $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG $DOCKER_USERNAME/$APP_NAME:latest
+                    '''
                 }
             }
         }
 
+        stage('📤 Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
+                    sh '''
+                    set -e
+                    echo "📤 Logging in to DockerHub..."
+                    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+                    echo "📤 Pushing Docker image..."
+                    docker push $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
+                    docker push $DOCKER_USERNAME/$APP_NAME:latest
+
+                    docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('🚀 Deploy to Production') {
+            steps {
+                sshagent(['deployment-server-ssh']) {
+                    sh '''
+                    set -e
+                    echo "🚀 Starting Deployment..."
+
+                    ssh -o StrictHostKeyChecking=accept-new -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
+                        set -e
+                        echo 'Connected to server'
+
+                        # Ensure Docker network exists
+                        docker network inspect private-net >/dev/null 2>&1 || \
+                        docker network create private-net
+
+                        # Pull latest image
+                        docker pull $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
+
+                        # Stop & remove old container
+                        docker stop $APP_NAME 2>/dev/null || true
+                        docker rm   $APP_NAME 2>/dev/null || true
+
+                        # Run new container
+                        docker run -d \
+                            --name $APP_NAME \
+                            --restart unless-stopped \
+                            --network private-net \
+                            --env-file $ENV_FILE \
+                            -p $APP_PORT:8080 \
+                            $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
+
+                        # Verify container
+                        sleep 5
+                        docker ps | grep $APP_NAME
+
+                        # Show logs
+                        docker logs --tail 20 $APP_NAME
+
+                        # Cleanup old images (keep last 5)
+                        docker images | grep $DOCKER_USERNAME/$APP_NAME | \
+                        tail -n +6 | awk '{print \\$3}' | xargs -r docker rmi || true
+                    "
+                    '''
+                }
+            }
+        }
 
         stage('🏥 Health Check') {
             steps {
                 sh '''
                 set -e
-
                 echo "🏥 Checking application health..."
 
-                # Install curl if missing (Ubuntu/Debian)
-                if ! command -v curl >/dev/null 2>&1; then
-                    sudo apt-get update && sudo apt-get install -y curl
-                fi
-
-                # Retry mechanism (max 10 attempts)
                 for i in $(seq 1 10); do
                     if curl -f http://$DEPLOY_SERVER:$APP_PORT; then
                         echo "✅ Application is healthy!"
                         echo "🌐 Live: http://$DEPLOY_SERVER:$APP_PORT"
                         exit 0
                     fi
-
                     echo "⏳ Waiting for app... ($i/10)"
                     sleep 5
                 done
@@ -145,6 +158,7 @@ Server  : ${DEPLOY_SERVER}
                     passwordVariable: 'DOCKER_PASSWORD'
                 )]) {
                     sh '''
+                    set -e
                     IMAGE="$DOCKER_USERNAME/$APP_NAME"
 
                     docker rmi $IMAGE:$IMAGE_TAG || true
@@ -186,4 +200,3 @@ Logs  : ${env.BUILD_URL}
         }
     }
 }
-
