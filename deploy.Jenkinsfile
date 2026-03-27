@@ -136,34 +136,50 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-           stage('🏥 Health Check') {
-            steps {
-                script {
-                    sh """
-                        echo "=== Preparing Health Check Environment ==="
-                        
-                        # [CHANGE: Use shell-compatible comments and install curl]
-                        if ! command -v curl &> /dev/null; then
-                            apk add --no-cache curl
-                        fi
+          stage('🏥 Health Check') {
+    steps {
+        script {
+            sh """
+                set -e
+                echo "=== Preparing Health Check Environment ==="
+                
+                # Ensure curl exists
+                if ! command -v curl &> /dev/null; then
+                    if command -v apk &> /dev/null; then
+                        echo "Installing curl via apk..."
+                        apk add --no-cache curl
+                    elif command -v apt-get &> /dev/null; then
+                        echo "Installing curl via apt-get..."
+                        sudo apt-get update
+                        sudo apt-get install -y curl
+                    else
+                        echo "❌ No known package manager found! Install curl manually."
+                        exit 1
+                    fi
+                else
+                    echo "✅ curl is already installed at \$(command -v curl)"
+                fi
 
-                        echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ ==="
-                        
-                        # Giving the Spring Boot app time to initialize and connect to DB
-                        sleep 30
-                        
-                        # [CHANGE: We use the root path since actuator is returning 404]
-                        # -f ensures the pipeline fails if the response is 4xx or 5xx
-                        curl -f http://${DEPLOY_SERVER}:${APP_PORT}/ || exit 1
-                        # [END CHANGE]
-                        
+                echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ ==="
+                
+                MAX_RETRIES=20
+                for i in \$(seq 1 \$MAX_RETRIES); do
+                    STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://${DEPLOY_SERVER}:${APP_PORT}/ || echo "000")
+                    if [ "\$STATUS" = "200" ]; then
                         echo "✅ Application is healthy!"
                         echo "🌐 Live at: http://${DEPLOY_SERVER}:${APP_PORT}"
-                    """
-                }
-            }
-        }
+                        exit 0
+                    fi
+                    echo "⏳ Waiting for app... (\$i/\$MAX_RETRIES)"
+                    sleep 5
+                done
 
+                echo "❌ Health check failed! App did not respond with 200."
+                exit 1
+            """
+        }
+    }
+}
         stage('🧹 Cleanup Jenkins') {
             steps {
                 withCredentials([usernamePassword(
