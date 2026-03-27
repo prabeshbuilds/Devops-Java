@@ -136,32 +136,36 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-
-         stage('🏥 Health Check') {
-            steps {
-                script {
-                    sh """
-                        echo "=== Preparing Health Check Environment ==="
-                        
-                        # [CHANGE: Use shell-compatible comments and install curl]
-                        if ! command -v curl &> /dev/null; then
-                            apk add --no-cache curl
-                        fi
-
-                        echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ping ==="
-                        
-                        # Giving the Spring Boot app time to initialize and connect to DB
-                        sleep 30
-                        
-                        # -f ensures the pipeline fails if the response is 4xx or 5xx
-                        curl -f http://${DEPLOY_SERVER}:${APP_PORT}/ping || exit 1
-                        
-                        echo "✅ Application is healthy!"
-                        echo "🌐 Live at: http://${DEPLOY_SERVER}:${APP_PORT}"
-                    """
+stage('Health Check') {
+    steps {
+        script {
+            echo "=== Performing Health Check on ${DEPLOY_URL} ==="
+            def healthy = false
+            for (int i = 1; i <= MAX_RETRIES; i++) {
+                try {
+                    def response = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' ${DEPLOY_URL}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (response == '200') {
+                        echo "✅ Deployment is healthy!"
+                        healthy = true
+                        break
+                    } else {
+                        echo "⚠️ Attempt ${i}: Service returned ${response}, retrying in ${RETRY_DELAY}s..."
+                    }
+                } catch (Exception e) {
+                    echo "⚠️ Attempt ${i}: Failed to reach service, retrying in ${RETRY_DELAY}s..."
                 }
+                sleep RETRY_DELAY
+            }
+            if (!healthy) {
+                error "❌ Deployment health check failed after ${MAX_RETRIES} attempts!"
             }
         }
+    }
+}
         stage('🧹 Cleanup Jenkins') {
             steps {
                 withCredentials([usernamePassword(
