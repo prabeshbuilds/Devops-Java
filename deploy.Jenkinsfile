@@ -136,31 +136,30 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-         stage('🏥 Health Check') {
+           stage('🏥 Health Check') {
             steps {
-                sshagent(['deployment-server-ssh']) {
-                    sh '''
-                    set -e
-                    echo "=== Health Check: Waiting for app to start ==="
+                script {
+                    sh """
+                        echo "=== Preparing Health Check Environment ==="
+                        
+                        # [CHANGE: Use shell-compatible comments and install curl]
+                        if ! command -v curl &> /dev/null; then
+                            apk add --no-cache curl
+                        fi
 
-                    ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
-                        set -e
-                        for i in \$(seq 1 20); do
-                            STATUS=\$(docker exec $APP_NAME curl -s -o /dev/null -w '%{http_code}' http://localhost:8080 || echo 000)
-                            if [ \"\$STATUS\" = \"200\" ]; then
-                                echo '✅ Application is healthy!'
-                                echo '🌐 Live: http://$DEPLOY_SERVER:$APP_PORT'
-                                exit 0
-                            fi
-                            echo '⏳ Waiting for app... (\$i/20)'
-                            sleep 5
-                        done
-
-                        echo '❌ Health check failed! Showing last 50 logs:'
-                        docker logs --tail 50 $APP_NAME
-                        exit 1
-                    "
-                    '''
+                        echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ ==="
+                        
+                        # Giving the Spring Boot app time to initialize and connect to DB
+                        sleep 30
+                        
+                        # [CHANGE: We use the root path since actuator is returning 404]
+                        # -f ensures the pipeline fails if the response is 4xx or 5xx
+                        curl -f http://${DEPLOY_SERVER}:${APP_PORT}/ || exit 1
+                        # [END CHANGE]
+                        
+                        echo "✅ Application is healthy!"
+                        echo "🌐 Live at: http://${DEPLOY_SERVER}:${APP_PORT}"
+                    """
                 }
             }
         }
