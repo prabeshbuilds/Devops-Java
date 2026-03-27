@@ -136,36 +136,34 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
- stage('🏥 Health Check') {
+         stage('🏥 Health Check') {
             steps {
-                script {
+                sshagent(['deployment-server-ssh']) {
                     sh '''
-                        echo "=== Health Check: Waiting for app to start ==="
-                        
-                        # [CHANGE: Use shell-compatible comments and install curl]
-                            if ! command -v curl &> /dev/null; then
-                                apk add --no-cache curl
-                            fi
+                    set -e
+                    echo "=== Health Check: Waiting for app to start ==="
 
-                        # Retry 10 times, 5 seconds each
-                        for i in $(seq 1 10); do
-                            if curl -f http://$DEPLOY_SERVER:$APP_PORT/; then
-                                echo "✅ Application is healthy!"
-                                echo "🌐 Live at: http://$DEPLOY_SERVER:$APP_PORT"
-                                exit 0   # Exit immediately if successful
-                            else
-                                echo "Waiting for app to start... ($i/10)"
-                                sleep 5
+                    ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
+                        set -e
+                        for i in \$(seq 1 20); do
+                            STATUS=\$(docker exec $APP_NAME curl -s -o /dev/null -w '%{http_code}' http://localhost:8080 || echo 000)
+                            if [ \"\$STATUS\" = \"200\" ]; then
+                                echo '✅ Application is healthy!'
+                                echo '🌐 Live: http://$DEPLOY_SERVER:$APP_PORT'
+                                exit 0
                             fi
+                            echo '⏳ Waiting for app... (\$i/20)'
+                            sleep 5
                         done
 
-                        echo "❌ Application failed health check..."
+                        echo '❌ Health check failed! Showing last 50 logs:'
+                        docker logs --tail 50 $APP_NAME
                         exit 1
+                    "
                     '''
                 }
             }
         }
-
 
         stage('🧹 Cleanup Jenkins') {
             steps {
