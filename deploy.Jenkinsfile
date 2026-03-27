@@ -144,13 +144,14 @@ stage('🏥 Health Check') {
                 set -e
                 echo "=== Preparing Health Check Environment ==="
                 
-                # Only install curl if missing
+                # --- Ensure curl is installed ---
                 if ! command -v curl &> /dev/null; then
+                    echo "curl not found! Installing..."
                     if command -v apk &> /dev/null; then
-                        echo "Installing curl via apk..."
+                        echo "Detected Alpine Linux. Installing curl via apk..."
                         apk add --no-cache curl
                     elif command -v apt-get &> /dev/null; then
-                        echo "Installing curl via apt-get..."
+                        echo "Detected Debian/Ubuntu. Installing curl via apt-get..."
                         sudo apt-get update
                         sudo apt-get install -y curl
                     else
@@ -161,21 +162,33 @@ stage('🏥 Health Check') {
                     echo "✅ curl is already installed at \$(command -v curl)"
                 fi
 
-                echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ ==="
-                
+                # --- Ensure Docker container is running ---
+                CONTAINER_NAME="devops-java"
+                IMAGE_NAME="devops-java-image"
+                APP_PORT="${APP_PORT}"
+
+                if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+                    echo "Container '${CONTAINER_NAME}' is not running. Starting it..."
+                    docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:${APP_PORT} ${IMAGE_NAME}
+                else
+                    echo "✅ Container '${CONTAINER_NAME}' is already running."
+                fi
+
+                # --- Health check loop ---
                 MAX_RETRIES=20
                 for i in \$(seq 1 \$MAX_RETRIES); do
-                    STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://${DEPLOY_SERVER}:${APP_PORT}/ || echo "000")
+                    STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:\$APP_PORT/ || echo "000")
                     if [ "\$STATUS" = "200" ]; then
                         echo "✅ Application is healthy!"
-                        echo "🌐 Live at: http://${DEPLOY_SERVER}:${APP_PORT}"
+                        echo "🌐 Live at: http://localhost:\$APP_PORT"
                         exit 0
                     fi
                     echo "⏳ Waiting for app... (\$i/\$MAX_RETRIES)"
                     sleep 5
                 done
 
-                echo "❌ Health check failed! App did not respond with 200."
+                echo "❌ Health check failed! Showing last 50 logs:"
+                docker logs --tail 50 ${CONTAINER_NAME}
                 exit 1
             """
         }
