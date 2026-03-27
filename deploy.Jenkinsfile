@@ -136,30 +136,36 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-
-        stage('🏥 Health Check') {
+ stage('🏥 Health Check') {
             steps {
-                sshagent(['deployment-server-ssh']) {
+                script {
                     sh '''
-                    set -e
-                    echo "🏥 Checking application health..."
+                        echo "=== Health Check: Waiting for app to start ==="
+                        
+                        # [CHANGE: Use shell-compatible comments and install curl]
+                            if ! command -v curl &> /dev/null; then
+                                apk add --no-cache curl
+                            fi
 
-                    for i in $(seq 1 10); do
-                        if ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "curl -s -o /dev/null -w '%{http_code}' http://localhost:$APP_PORT | grep 200"; then
-                            echo "✅ Application is healthy!"
-                            echo "🌐 Live: http://$DEPLOY_SERVER:$APP_PORT"
-                            exit 0
-                        fi
-                        echo "⏳ Waiting for app... ($i/10)"
-                        sleep 5
-                    done
+                        # Retry 10 times, 5 seconds each
+                        for i in $(seq 1 10); do
+                            if curl -f http://$DEPLOY_SERVER:$APP_PORT/; then
+                                echo "✅ Application is healthy!"
+                                echo "🌐 Live at: http://$DEPLOY_SERVER:$APP_PORT"
+                                exit 0   # Exit immediately if successful
+                            else
+                                echo "Waiting for app to start... ($i/10)"
+                                sleep 5
+                            fi
+                        done
 
-                    echo "❌ Health check failed!"
-                    exit 1
+                        echo "❌ Application failed health check..."
+                        exit 1
                     '''
                 }
             }
         }
+
 
         stage('🧹 Cleanup Jenkins') {
             steps {
