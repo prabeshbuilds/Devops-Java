@@ -143,10 +143,9 @@ stage('🏥 Health Check') {
             sh """
                 set -e
                 echo "=== Preparing Health Check Environment ==="
-                
-                # --- Ensure curl is installed ---
+
+                # Ensure curl is installed
                 if ! command -v curl &> /dev/null; then
-                    echo "curl not found! Installing..."
                     if command -v apk &> /dev/null; then
                         echo "Detected Alpine Linux. Installing curl via apk..."
                         apk add --no-cache curl
@@ -162,19 +161,20 @@ stage('🏥 Health Check') {
                     echo "✅ curl is already installed at \$(command -v curl)"
                 fi
 
-                # --- Ensure Docker container is running ---
-                CONTAINER_NAME="devops-java"
-                IMAGE_NAME="devops-java-image"
-                APP_PORT="${APP_PORT}"
+                # --- Docker container variables ---
+                CONTAINER_NAME="\$CONTAINER_NAME"
+                IMAGE_NAME="\$IMAGE_NAME"
+                APP_PORT="\$APP_PORT"
 
-                if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
-                    echo "Container '${CONTAINER_NAME}' is not running. Starting it..."
-                    docker run -d --name ${CONTAINER_NAME} -p ${APP_PORT}:${APP_PORT} ${IMAGE_NAME}
+                # Ensure Docker container is running
+                if ! docker ps --format '{{.Names}}' | grep -q \"^\$CONTAINER_NAME\$\"; then
+                    echo "Container '\$CONTAINER_NAME' is not running. Starting it..."
+                    docker run -d --name \$CONTAINER_NAME -p \$APP_PORT:\$APP_PORT \$IMAGE_NAME
                 else
-                    echo "✅ Container '${CONTAINER_NAME}' is already running."
+                    echo "✅ Container '\$CONTAINER_NAME' is already running."
                 fi
 
-                # --- Health check loop ---
+                # Health check loop
                 MAX_RETRIES=20
                 for i in \$(seq 1 \$MAX_RETRIES); do
                     STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:\$APP_PORT/ || echo "000")
@@ -188,13 +188,12 @@ stage('🏥 Health Check') {
                 done
 
                 echo "❌ Health check failed! Showing last 50 logs:"
-                docker logs --tail 50 ${CONTAINER_NAME}
+                docker logs --tail 50 \$CONTAINER_NAME
                 exit 1
             """
         }
     }
 }
-
 
         stage('🧹 Cleanup Jenkins') {
             steps {
