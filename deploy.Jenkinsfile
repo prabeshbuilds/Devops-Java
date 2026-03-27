@@ -21,7 +21,6 @@ pipeline {
         DEPLOY_PORT   = '22'
         APP_PORT      = '8080'
 
-        // Must exist on remote server
         ENV_FILE      = '/home/prabesh/.env'
     }
 
@@ -52,7 +51,7 @@ Server  : ${DEPLOY_SERVER}
                     sh '''
                     set -e
                     echo "🔨 Building Docker image..."
-                    docker build -t $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG .
+                    docker build --pull -t $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG .
                     docker tag $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG $DOCKER_USERNAME/$APP_NAME:latest
                     '''
                 }
@@ -74,8 +73,6 @@ Server  : ${DEPLOY_SERVER}
                     echo "📤 Pushing Docker image..."
                     docker push $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
                     docker push $DOCKER_USERNAME/$APP_NAME:latest
-
-                    docker logout
                     '''
                 }
             }
@@ -90,7 +87,7 @@ Server  : ${DEPLOY_SERVER}
 
                     ssh -o StrictHostKeyChecking=accept-new -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "
                         set -e
-                        echo 'Connected to server'
+                        echo '✅ Connected to server'
 
                         # Ensure Docker network exists
                         docker network inspect private-net >/dev/null 2>&1 || \
@@ -120,8 +117,12 @@ Server  : ${DEPLOY_SERVER}
                         docker logs --tail 20 $APP_NAME
 
                         # Cleanup old images (keep last 5)
-                        docker images | grep $DOCKER_USERNAME/$APP_NAME | \
-                        tail -n +6 | awk '{print \\$3}' | xargs -r docker rmi || true
+                        docker images --format '{{.Repository}} {{.ID}} {{.CreatedAt}}' \
+                            | grep $DOCKER_USERNAME/$APP_NAME \
+                            | sort -k3 -r \
+                            | tail -n +6 \
+                            | awk '{print \$2}' \
+                            | xargs -r docker rmi || true
                     "
                     '''
                 }
@@ -130,23 +131,25 @@ Server  : ${DEPLOY_SERVER}
 
         stage('🏥 Health Check') {
             steps {
-                sh '''
-                set -e
-                echo "🏥 Checking application health..."
+                sshagent(['deployment-server-ssh']) {
+                    sh '''
+                    set -e
+                    echo "🏥 Checking application health..."
 
-                for i in $(seq 1 10); do
-                    if curl -f http://$DEPLOY_SERVER:$APP_PORT; then
-                        echo "✅ Application is healthy!"
-                        echo "🌐 Live: http://$DEPLOY_SERVER:$APP_PORT"
-                        exit 0
-                    fi
-                    echo "⏳ Waiting for app... ($i/10)"
-                    sleep 5
-                done
+                    for i in $(seq 1 10); do
+                        if ssh -p $DEPLOY_PORT $DEPLOY_USER@$DEPLOY_SERVER "curl -f http://localhost:$APP_PORT"; then
+                            echo "✅ Application is healthy!"
+                            echo "🌐 Live: http://$DEPLOY_SERVER:$APP_PORT"
+                            exit 0
+                        fi
+                        echo "⏳ Waiting for app... ($i/10)"
+                        sleep 5
+                    done
 
-                echo "❌ Health check failed!"
-                exit 1
-                '''
+                    echo "❌ Health check failed!"
+                    exit 1
+                    '''
+                }
             }
         }
 
