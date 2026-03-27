@@ -144,52 +144,42 @@ stage('🏥 Health Check') {
                 set -e
                 echo "=== Preparing Health Check Environment ==="
 
-                # Ensure curl is installed
+                # Detect OS and install curl if missing
                 if ! command -v curl &> /dev/null; then
-                    if command -v apk &> /dev/null; then
-                        echo "Detected Alpine Linux. Installing curl via apk..."
-                        apk add --no-cache curl
-                    elif command -v apt-get &> /dev/null; then
-                        echo "Detected Debian/Ubuntu. Installing curl via apt-get..."
-                        sudo apt-get update
+                    if [ -f /etc/debian_version ]; then
+                        echo "Detected Debian/Ubuntu. Installing curl..."
+                        sudo apt-get update -y
                         sudo apt-get install -y curl
+                    elif [ -f /etc/alpine-release ]; then
+                        echo "Detected Alpine Linux. Installing curl..."
+                        apk add --no-cache curl
                     else
-                        echo "❌ No known package manager found! Install curl manually."
+                        echo "❌ Unknown OS. Install curl manually."
                         exit 1
                     fi
                 else
-                    echo "✅ curl is already installed at \$(command -v curl)"
+                    echo "✅ curl already installed at \$(command -v curl)"
                 fi
 
-                # --- Docker container variables ---
-                CONTAINER_NAME="\$CONTAINER_NAME"
-                IMAGE_NAME="\$IMAGE_NAME"
-                APP_PORT="\$APP_PORT"
+                # Health check
+                APP_URL="http://\$DEPLOY_SERVER:\$APP_PORT/"
+                echo "=== Checking App on \$APP_URL ==="
 
-                # Ensure Docker container is running
-                if ! docker ps --format '{{.Names}}' | grep -q \"^\$CONTAINER_NAME\$\"; then
-                    echo "Container '\$CONTAINER_NAME' is not running. Starting it..."
-                    docker run -d --name \$CONTAINER_NAME -p \$APP_PORT:\$APP_PORT \$IMAGE_NAME
-                else
-                    echo "✅ Container '\$CONTAINER_NAME' is already running."
-                fi
-
-                # Health check loop
-                MAX_RETRIES=20
-                for i in \$(seq 1 \$MAX_RETRIES); do
-                    STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:\$APP_PORT/ || echo "000")
-                    if [ "\$STATUS" = "200" ]; then
-                        echo "✅ Application is healthy!"
-                        echo "🌐 Live at: http://localhost:\$APP_PORT"
-                        exit 0
-                    fi
-                    echo "⏳ Waiting for app... (\$i/\$MAX_RETRIES)"
+                # Wait for app to start
+                RETRIES=20
+                until curl -f \$APP_URL 2>/dev/null || [ \$RETRIES -le 0 ]; do
+                    echo "⏳ Waiting for app... (\$RETRIES retries left)"
                     sleep 5
+                    RETRIES=\$((RETRIES - 1))
                 done
 
-                echo "❌ Health check failed! Showing last 50 logs:"
-                docker logs --tail 50 \$CONTAINER_NAME
-                exit 1
+                if [ \$RETRIES -le 0 ]; then
+                    echo "❌ Application did not become healthy in time!"
+                    exit 1
+                fi
+
+                echo "✅ Application is healthy!"
+                echo "🌐 Live at: \$APP_URL"
             """
         }
     }
