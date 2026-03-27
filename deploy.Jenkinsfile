@@ -137,53 +137,31 @@ Server  : ${DEPLOY_SERVER}
     }
 }
 
-                    stage('🏥 Health Check') {
-                        steps {
-                            script {
-                                sh """
-                                    set -e
-                                    echo "=== Preparing Health Check Environment ==="
+         stage('🏥 Health Check') {
+            steps {
+                script {
+                    sh """
+                        echo "=== Preparing Health Check Environment ==="
+                        
+                        # [CHANGE: Use shell-compatible comments and install curl]
+                        if ! command -v curl &> /dev/null; then
+                            apk add --no-cache curl
+                        fi
 
-                                    # Only install curl if missing
-                                    if ! command -v curl &> /dev/null; then
-                                        if [ -f /etc/debian_version ]; then
-                                            echo "Detected Debian/Ubuntu. Installing curl..."
-                                            sudo apt-get update -y
-                                            sudo apt-get install -y curl
-                                        elif [ -f /etc/alpine-release ]; then
-                                            echo "Detected Alpine Linux. Installing curl..."
-                                            apk add --no-cache curl
-                                        else
-                                            echo "❌ Unknown OS. Please install curl manually."
-                                            exit 1
-                                        fi
-                                    else
-                                        echo "✅ curl already installed at \$(command -v curl)"
-                                    fi
-
-                                    # Health check
-                                    APP_URL="http://\$DEPLOY_SERVER:\$APP_PORT/"
-                                    echo "=== Checking App on \$APP_URL ==="
-
-                                    RETRIES=12
-                                    until curl -f \$APP_URL 2>/dev/null || [ \$RETRIES -le 0 ]; do
-                                        echo "⏳ Waiting for app... (\$RETRIES retries left)"
-                                        sleep 5
-                                        RETRIES=\$((RETRIES - 1))
-                                    done
-
-                                    if [ \$RETRIES -le 0 ]; then
-                                        echo "❌ Application did not become healthy in time!"
-                                        exit 1
-                                    fi
-
-                                    echo "✅ Application is healthy!"
-                                    echo "🌐 Live at: \$APP_URL"
-                                """
-                            }
-                        }
-                    }
-
+                        echo "=== Checking App on http://${DEPLOY_SERVER}:${APP_PORT}/ping ==="
+                        
+                        # Giving the Spring Boot app time to initialize and connect to DB
+                        sleep 30
+                        
+                        # -f ensures the pipeline fails if the response is 4xx or 5xx
+                        curl -f http://${DEPLOY_SERVER}:${APP_PORT}/ping || exit 1
+                        
+                        echo "✅ Application is healthy!"
+                        echo "🌐 Live at: http://${DEPLOY_SERVER}:${APP_PORT}"
+                    """
+                }
+            }
+        }
         stage('🧹 Cleanup Jenkins') {
             steps {
                 withCredentials([usernamePassword(
