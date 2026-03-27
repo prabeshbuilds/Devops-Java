@@ -99,6 +99,7 @@ Server  : ${DEPLOY_SERVER}
                         # Stop & remove old container
                         docker stop $APP_NAME 2>/dev/null || true
                         docker rm   $APP_NAME 2>/dev/null || true
+                        
 
                         # Run new container
                         docker run -d \
