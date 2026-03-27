@@ -90,8 +90,10 @@ Server  : ${DEPLOY_SERVER}
                         echo '✅ Connected to server'
 
                         # Ensure Docker network exists
-                        docker network inspect private-net >/dev/null 2>&1 || \
-                        docker network create private-net
+                        docker network inspect private-net >/dev/null 2>&1 || docker network create private-net
+
+                        # Login to DockerHub (for private images)
+                        echo '$DOCKER_PASSWORD' | docker login -u '$DOCKER_USERNAME' --password-stdin
 
                         # Pull latest image
                         docker pull $DOCKER_USERNAME/$APP_NAME:$IMAGE_TAG
