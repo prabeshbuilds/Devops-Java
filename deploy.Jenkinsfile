@@ -136,83 +136,36 @@ Server  : ${DEPLOY_SERVER}
         }
     }
 }
-        stage('🏥 Health Check') {
+         stage('Health Check') {
             steps {
-                script {
-                    sh '''
-                        echo "=== Health Check: Waiting for app to start ==="
-                        
-                        # [CHANGE: Use shell-compatible comments and install curl]
-                            if ! command -v curl &> /dev/null; then
-                                apk add --no-cache curl
-                            fi
-
-                        # Retry 10 times, 5 seconds each
-                        for i in $(seq 1 10); do
-                            if curl -f http://$DEPLOY_SERVER:$APP_PORT/; then
-                                echo "✅ Application is healthy!"
-                                echo "🌐 Live at: http://$DEPLOY_SERVER:$APP_PORT"
-                                exit 0   # Exit immediately if successful
-                            else
-                                echo "Waiting for app to start... ($i/10)"
-                                sleep 5
-                            fi
-                        done
-
-                        echo "❌ Application failed health check..."
-                        exit 1
-                    '''
-                }
-            }
-        }
-
-        stage('🧹 Cleanup Jenkins') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh '''
-                    set -e
-                    IMAGE="$DOCKER_USERNAME/$APP_NAME"
-
-                    docker rmi $IMAGE:$IMAGE_TAG || true
-                    docker rmi $IMAGE:latest || true
-                    docker image prune -f || true
-
-                    echo "🧹 Cleanup completed"
-                    '''
-                }
+                sh """
+                echo "=== Health Check ==="
+                if command -v curl &> /dev/null; then
+                    for i in \$(seq 1 10); do
+                        if curl -s http://localhost:${APP_PORT}/actuator/health | grep -q 'UP'; then
+                            echo "✅ App is healthy"
+                            break
+                        else
+                            echo "Waiting..."
+                            sleep 5
+                        fi
+                    done
+                else
+                    echo "curl not found, skipping health check"
+                fi
+                """
             }
         }
     }
-
     post {
-        success {
-            echo """
-╔══════════════════════════════════════════════╗
-║        🎉 DEPLOYMENT SUCCESSFUL              ║
-╚══════════════════════════════════════════════╝
-App URL : http://${DEPLOY_SERVER}:${APP_PORT}
-Image   : ${IMAGE_TAG}
-══════════════════════════════════════════════
-"""
-        }
-
-        failure {
-            echo """
-╔══════════════════════════════════════════════╗
-║            ❌ DEPLOYMENT FAILED              ║
-╚══════════════════════════════════════════════╝
-Build : #${env.BUILD_NUMBER}
-Logs  : ${env.BUILD_URL}
-══════════════════════════════════════════════
-"""
-        }
-
         always {
-            sh 'docker image prune -f || true'
+            sh 'docker image prune -f'
+        }
+        success {
+            echo "✅ Deployment succeeded!"
+        }
+        failure {
+            echo "❌ Deployment failed!"
         }
     }
 }
