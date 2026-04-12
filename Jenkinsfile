@@ -53,17 +53,15 @@ pipeline {
         }
 
         stage('🔍 Code Quality') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:25-jdk-alpine'
+                    reuseNode true
+                }
+            }
             steps {
-                script {
-                    try {
-                        withSonarQubeEnv('SonarQube') {
-                            sh './mvnw -B compile sonar:sonar'
-                        }
-                        echo "✅ Code quality analysis passed"
-                    } catch (Exception e) {
-                        echo "⚠️  SonarQube not available, skipping quality analysis"
-                        echo "Reason: ${e.message}"
-                    }
+                withSonarQubeEnv('SonarQube') {
+                    sh './mvnw -B compile sonar:sonar'
                 }
             }
         }
