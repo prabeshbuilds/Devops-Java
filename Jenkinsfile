@@ -53,12 +53,6 @@ pipeline {
         }
 
         stage('🔍 Code Quality') {
-            agent {
-                docker {
-                    image 'eclipse-temurin:25-jdk-alpine'
-                    reuseNode true
-                }
-            }
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh './mvnw -B compile sonar:sonar'
